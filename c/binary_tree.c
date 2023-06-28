@@ -88,8 +88,9 @@ bool tree_breadth_first_search(tree_t *n, int needle) {
   queue_init(buf);
   queue_push(buf, n);
 
-  tree_t *curr;
-  while ((queue_pop(buf, &curr)) == 0) {
+  tree_t **curr_ptr = malloc(sizeof(tree_t**));
+  while ((queue_pop(buf, curr_ptr)) == 0) {
+    tree_t *curr = *curr_ptr;
     if (curr->value == needle) {
       found = true;
       break;
@@ -104,6 +105,7 @@ bool tree_breadth_first_search(tree_t *n, int needle) {
     }
   }
 
+  free(curr_ptr);
   queue_deinit(buf);
   return found;
 }
