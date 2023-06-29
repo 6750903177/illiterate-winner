@@ -9,142 +9,168 @@ typedef struct tree {
   struct tree *right;
 } tree_t;
 
-void tree_deinit(tree_t *n) {
-  if (n == NULL) {
+void tree_init(tree_t *t, int value) {
+  t->value = value;
+  t->left = NULL;
+  t->right = NULL;
+}
+
+void tree_deinit(tree_t *t) {
+  if (t == NULL) {
     return;
   }
 
-  tree_deinit(n->left);
-  tree_deinit(n->right);
-  free(n);
+  tree_deinit(t->left);
+  tree_deinit(t->right);
+  free(t);
 }
 
-bool tree_find(tree_t *t, int needle) {
-  if (t->value == needle) {
+int _insert_left(tree_t *t, int value) {
+  if ((t->left = malloc(sizeof(tree_t))) == NULL) {
+    return 1;
+  }
+
+  tree_init(t->left, value);
+  return 0;
+}
+
+int _insert_right(tree_t *t, int value) {
+  if ((t->right = malloc(sizeof(tree_t))) == NULL) {
+    return 1;
+  }
+
+  tree_init(t->right, value);
+  return 0;
+}
+
+int tree_insert(tree_t *t, int value) {
+  return (value <= t->value)
+    ? (t->left == NULL)
+        ? _insert_left(t, value)
+        : tree_insert(t->left, value)
+    : (t->right == NULL)
+        ? _insert_right(t, value)
+        : tree_insert(t->right, value);
+}
+
+bool tree_find(tree_t *t, int value) {
+  if (t == NULL) {
+    return false;
+  }
+
+  if (t->value == value) {
     return true;
   }
 
-  int v = t->value;
-  if (needle <= v && t->left != NULL) {
-    return tree_find(t->left, needle);
-  } else if (needle > v && t->right != NULL) {
-    return tree_find(t->right, needle);
-  }
-
-  return false;
+  return (value < t->value)
+    ? tree_find(t->left, value)
+    : tree_find(t->right, value);
 }
 
-void tree_insert(tree_t *t, int value) {
-  int v = t->value;
-  if (value <= v) {
-    if (t->left == NULL) {
-      tree_t *node = malloc(sizeof(tree_t*));
-      node->value = value;
-      t->left = node;
-    } else {
-      tree_insert(t->left, value);
-    }
-  } else {
-    if (t->right == NULL) {
-      tree_t *node = malloc(sizeof(tree_t*));
-      node->value = value;
-      t->right = node;
-    } else {
-      tree_insert(t->right, value);
-    }
+void tree_print(tree_t *t) {
+  if (t == NULL) {
+    return;
   }
+
+  tree_print(t->left);
+  printf("%d\n", t->value);
+  tree_print(t->right);
 }
 
-void tree_find_greatest_child(
-  tree_t *parent, tree_t *current,
-  tree_t **p, tree_t **c
+void _find_greatest_smaller_child(
+  tree_t *p,
+  tree_t *c,
+  tree_t **ptrp,
+  tree_t **ptrc
 ) {
-  if (current->right == NULL) {
-    *c = current;
-    *p = parent;
+  if (c->right == NULL) {
+    *ptrp = p;
+    *ptrc = c;
     return;
   }
 
-  tree_find_greatest_child(current, current->right, p, c);
+  _find_greatest_smaller_child(c, c->right, ptrp, ptrc);
 }
 
-void tree_remove_node(tree_t *p, tree_t *c, tree_t **v) {
-  if (c->left == NULL && c->right == NULL) {  // leaf node
-    if (p != NULL) {
-      printf("leaf node\n");
-      if (c->value <= p->value) {
-        p->left = NULL;
-      } else {
-        p->right = NULL;
-      }
-    }
-  } else if (c->left == NULL) {  // has single child
-    p->left = c->right;
-    printf("p->left->value=%d\n", p->left->value);
-  } else if (c->right == NULL) {  // has single child
-    p->right = c->left;
-    printf("p->right->value=%d\n", p->right->value);
-  } else {  // hard mode
-    tree_t **ptr_p = malloc(sizeof(tree_t**));
-    tree_t **ptr_c = malloc(sizeof(tree_t**));
-    tree_find_greatest_child(c, c->left, ptr_p, ptr_c);
-
-    tree_t *tmp_p = *ptr_p;
-    tree_t *tmp_c = *ptr_c;
-
-    tmp_p->right = NULL;
-    if (tmp_c->left != NULL) {
-      tmp_p->right = tmp_c->left;
-      tmp_c->left = NULL;
-    }
-
-    tmp_c->right = c->right;
-    tmp_c->left = c->left;
-
-    free(ptr_p);
-    free(ptr_c);
-
-    if (p != NULL) {
-      if (tmp_c->value <= p->value) {
-        p->left = tmp_c;
-      } else {
-        p->right = tmp_c;
-      }
-    } else {  // overwrite root node with temp node
-      *c = *tmp_c;
-      return;
-    }
-  }
-  free(c);
-}
-
-void tree_delete(tree_t *t, int value) {
-  void driver(tree_t *p, tree_t *c, int v) {
-    if (c->value == v) {  // current node needs to die
-      tree_remove_node(p, c, NULL);
-      return;
-    }
-
-    if (v <= c->value && c->left != NULL) {
-      driver(c, c->left, v);
-    } else if (v > c->value && c->right != NULL) {
-      driver(c, c->right, v);
-    }
-
+void _find_smallest_greater_child(
+  tree_t *p,
+  tree_t *c,
+  tree_t **ptrp,
+  tree_t **ptrc
+) {
+  if (c->left == NULL) {
+    *ptrp = p;
+    *ptrc = c;
     return;
   }
 
-  driver(NULL, t, value);
+  _find_smallest_greater_child(c, c->left, ptrp, ptrc);
 }
 
-void tree_print_in_order(tree_t *n) {
-  if (n == NULL) {
-    return;
+void _unlink_leaf(tree_t *parent, tree_t *current) {
+  if (current->value <= parent->value) {
+    parent->left = NULL;
+  } else {
+    parent->right = NULL;
+  }
+}
+
+void _unlink_with_single_child(tree_t *parent, tree_t *current) {
+  if (current->left != NULL) {
+    if (current->value <= parent->value) {
+      parent->left = current->left;
+    } else {
+      parent->right = current->left;
+    }
+    current->left = NULL;
+  } else {
+    if (current->value <= parent->value) {
+      parent->left = current->right;
+    } else {
+      parent->right = current->right;
+    }
+    current->right = NULL;
+  }
+}
+
+int _delete_node(tree_t *parent, tree_t *current) {
+  if (current->left != NULL && current->right != NULL) {
+    tree_t **ptrp = malloc(sizeof(tree_t*));
+    tree_t **ptrc = malloc(sizeof(tree_t*));
+    _find_greatest_smaller_child(current, current->left, ptrp, ptrc);
+
+    current->value = (*ptrc)->value;
+    (*ptrp)->right = NULL;
+    free(*ptrc);
+
+    free(ptrc);
+    free(ptrp);
+  } else if (current->left == NULL && current->right == NULL) {
+    _unlink_leaf(parent, current);
+    free(current);
+  } else {
+    _unlink_with_single_child(parent, current);
+    free(current);
+  }
+  return 0;
+}
+
+int tree_delete(tree_t *t, int value) {
+  int driver(tree_t *p, tree_t *c, int value) {
+    if (c == NULL) {
+      return 1;
+    }
+
+    if (c->value == value) {
+      return _delete_node(p, c);
+    }
+
+    return (value <= c->value)
+      ? driver(c, c->left, value)
+      : driver(c, c->right, value);
   }
 
-  tree_print_in_order(n->left);
-  printf("NODE: %d\n", n->value);
-  tree_print_in_order(n->right);
+  return driver(NULL, t, value);
 }
 
 int main() {
@@ -165,8 +191,9 @@ int main() {
    *          +- 7
    *       
    */
-  tree_t *t = malloc(sizeof(tree_t*));
-  t->value = 20;
+  tree_t *t = malloc(sizeof(tree_t));
+  tree_init(t, 20);
+
   tree_insert(t, 10);
   tree_insert(t, 50);
   tree_insert(t, 5);
@@ -176,6 +203,10 @@ int main() {
   tree_insert(t, 7);
   tree_insert(t, 29);
   tree_insert(t, 45);
+
+  assert(tree_delete(t, 20) == 0);
+  assert(tree_delete(t, 50) == 0);
+  assert(tree_delete(t, 69) == 1);
 
   assert( tree_find(t, 45));
   assert( tree_find(t, 5));
