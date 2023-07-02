@@ -3,9 +3,6 @@
 #include <stdlib.h>
 
 
-void cs(int *arr) {
-}
-
 void counting_sort(int *arr, int n, int k) {
   int *sorted = malloc(sizeof(int) * n);
   for (int i = 0; i < n; i++) {
