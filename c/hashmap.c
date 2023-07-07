@@ -1,9 +1,24 @@
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+
+uint64_t fnv_1a_64bit(const char *key, int n) {
+  static uint64_t FNV_OFFSET = 0xcbf29ce484222325;
+  static uint64_t FNV_PRIME = 0x00000100000001b3;
+
+  uint64_t hash = FNV_OFFSET;
+  for (int i = 0; i < n; i++) {
+    hash ^= (uint64_t)(uint8_t)key[i];
+    hash *= FNV_PRIME;
+  }
+
+  return hash;
+}
+
 
 typedef struct chain {
   const char *key;
@@ -12,28 +27,42 @@ typedef struct chain {
   struct chain *next;
 } chain_t;
 
-void chain_init(chain_t *c, const char *key, int value) {
-  c->key = key;
-  c->value = value;
-  c->prev = NULL;
-  c->next = NULL;
+chain_t* chain_init(const char *key, int value) {
+  chain_t *chain = malloc(sizeof(chain_t));
+  if (chain == NULL) {
+    return NULL;
+  }
+
+  chain->key = key;
+  chain->value = value;
+  chain->prev = NULL;
+  chain->next = NULL;
+
+  return chain;
 }
 
-typedef struct doubly_linked_list {
+
+typedef struct list {
+  int length;
   chain_t *head;
   chain_t *tail;
-  int length;
 } list_t;
 
-void dll_init(list_t *l) {
-  l->head = NULL;
-  l->tail = NULL;
-  l->length = 0;
+list_t* list_init() {
+  list_t *list = malloc(sizeof(list_t));
+  if (list == NULL) {
+    return NULL;
+  }
+
+  list->length = 0;
+  list->head = NULL;
+  list->tail = NULL;
+
+  return list;
 }
 
-void dll_deinit(list_t *l) {
+void list_deinit(list_t *l) {
   while (l->head != NULL) {
-    l->length--;
     chain_t *curr = l->head;
     l->head = curr->next;
     free(curr);
@@ -41,67 +70,32 @@ void dll_deinit(list_t *l) {
   free(l);
 }
 
-int dll_add(list_t *l, const char *key, int value) {
-  chain_t *link = NULL;
-  if ((link = malloc(sizeof(chain_t))) == NULL) {
-    return 1;
+chain_t* list_push_front(list_t *l, chain_t *node) {
+  if (node == NULL) {
+    return NULL;
   }
-
-  chain_init(link, key, value);
 
   l->length++;
-  if (l->head == NULL) {
-    l->head = link;
-    l->tail = link;
+  if (l->head != NULL) {
+    l->head->prev = node;
+    node->next = l->head;
+    l->head = node;
   } else {
-    link->next = l->head;
-    l->head->prev = link;
-    l->head = link;
+    l->head = node;
+    l->tail = node;
   }
 
-  return 0;
+  return node;
 }
 
-bool dll_get(list_t *l, const char *key, int *value) {
+chain_t* list_delete(list_t *l, const char *key) {
   if (l->length == 0) {
-    return false;
+    return NULL;
   }
 
+  chain_t *found = NULL;
   chain_t *curr = l->head;
-  for (int i = 0; i < l->length; i++) {
-    if (strcmp(curr->key, key) == 0) {
-      *value = curr->value;
-      return true;
-    }
-    curr = curr->next;
-  }
-
-  return false;
-}
-
-bool dll_search(list_t *l, const char *key) {
-  if (l->length == 0) {
-    return false;
-  }
-
-  chain_t *curr = l->head;
-  for (int i = 0; i < l->length; i++) {
-    if (strcmp(curr->key, key) == 0) {
-      return true;
-    }
-    curr = curr->next;
-  }
-
-  return false;
-}
-
-bool dll_delete(list_t *l, const char *key) {
-  if (l->length == 0) {
-    return false;
-  }
-
-  chain_t *curr = l->head;
-  for (int i = 0; i < l->length; i++) {
+  while (curr != NULL) {
     if (strcmp(curr->key, key) == 0) {
       if (curr->prev != NULL) {
         curr->prev->next = curr->next;
@@ -115,137 +109,142 @@ bool dll_delete(list_t *l, const char *key) {
         l->tail = curr->prev;
       }
 
-      l->length--;
-      free(curr);
-      return true;
+      found = curr;
+      found->prev = NULL;
+      found->next = NULL;
+      break;
     }
+
     curr = curr->next;
   }
 
-  return false;
+  return found;
 }
 
+chain_t* list_get(list_t *l, const char *key) {
+  if (l->length == 0) {
+    return NULL;
+  }
 
+  chain_t *found = NULL;
+  chain_t *curr = l->head;
+  while (curr != NULL) {
+    if (strcmp(curr->key, key) == 0) {
+      found = curr;
+      break;
+    }
 
+    curr = curr->next;
+  }
 
-
-
+  return found;
+}
 
 
 typedef struct map {
-  int n;
-  int m;
-  list_t **slots;
-  int (*hash)(const char *, int);
+  int length;
+  int capacity;
+  uint64_t (*hash)(const char*, int);
+  list_t **buckets;
 } map_t;
 
-int map_init(map_t *m, int capacity, int (*hash)(const char *, int)) {
-  m->n = 0;
-  m->m = capacity;
-  m->hash = hash;
+map_t* map_init(int capacity) {
+  map_t *map = malloc(sizeof(map_t));
+  if (map == NULL) {
+    return NULL;
+  }
 
-  if ((m->slots = malloc(sizeof(list_t*) * capacity)) == NULL) {
-    return 1;
+  map->length = 0;
+  map->capacity = capacity;
+  map->hash = fnv_1a_64bit;
+  if ((map->buckets = malloc(sizeof(list_t*) * capacity)) == NULL) {
+    free(map);
+    return NULL;
   }
 
   for (int i = 0; i < capacity; i++) {
-    if ((m->slots[i] = malloc(sizeof(list_t))) == NULL) {
-      return 1;
+    if ((map->buckets[i] = list_init()) == NULL) {
+      free(map->buckets);
+      free(map);
+      return NULL;
     }
-    dll_init(m->slots[i]);
   }
 
-  return 0;
+  return map;
 }
 
 void map_deinit(map_t *m) {
-  for (int i = 0; i < m->m; i++) {
-    dll_deinit(m->slots[i]);
+  for (int i = 0; i < m->capacity; i++) {
+    list_deinit(m->buckets[i]);
   }
-  free(m->slots);
+  free(m->buckets);
   free(m);
 }
 
-int map_add(map_t *m, const char *key, int value) {
-  int slot = m->hash(key, m->m);
-  if (dll_add(m->slots[slot], key, value) != 0) {
-    return 1;
+const char* map_add(map_t *m, const char *key, int value) {
+  chain_t *node = chain_init(key, value);
+  if (node == NULL) {
+    return NULL;
   }
-  m->n++;
-  return 0;
+
+  int index = m->hash(key, strlen(key)) % m->capacity;
+  if ((node = list_push_front(m->buckets[index], node)) == NULL) {
+    return NULL;
+  }
+
+  m->length++;
+  return key;
 }
 
-bool map_get(map_t *m, const char *key, int *value) {
-  int slot = m->hash(key, m->m);
-  return dll_get(m->slots[slot], key, value);
-}
+int* map_get(map_t *m, const char *key) {
+  int index = m->hash(key, strlen(key)) % m->capacity;
 
-bool map_search(map_t *m, const char *key) {
-  int slot = m->hash(key, m->m);
-  return dll_search(m->slots[slot], key);
+  chain_t *found = list_get(m->buckets[index], key);
+  if (found == NULL) {
+    return NULL;
+  }
+
+  return &found->value;
 }
 
 bool map_delete(map_t *m, const char *key) {
-  int slot = m->hash(key, m->m);
-  if (!dll_delete(m->slots[slot], key)) {
+  int index = m->hash(key, strlen(key)) % m->capacity;
+
+  chain_t *found = list_delete(m->buckets[index], key);
+  if (found == NULL) {
     return false;
   }
-  m->n--;
+
+  m->length--;
+  free(found);
+
   return true;
 }
 
 
-
-
-
-
-int _radix_128(const char *key) {
-  int output = 0;
-  int n = strlen(key);
-  int scale = 1;
-
-  for (int i = 0; i < n; i++) {
-    output += key[n - i - 1] * scale;
-    scale *= 128;
-  }
-
-  return output;
-}
-
-int division_hash(const char *key, int m) {
-  return _radix_128(key) % m;
-}
-
-int multiplication_hash(const char *key, int m) {
-  double scale = (sqrt(5) - 1.0) / 2.0;
-  double prod = (double) _radix_128(key) * scale;
-  return  (int) ((double) m * (prod - floor(prod)));
-}
-
 int main() {
-  map_t *m = malloc(sizeof(map_t));
-  map_init(m, 5, multiplication_hash);
+  map_t *m = map_init(16);
+  assert(m != NULL);
 
-  assert(map_add(m, "foo", 55) == 0);
-  assert(m->n == 1);
-  assert(map_add(m, "fool", 75) == 0);
-  assert(m->n == 2);
-  assert(map_add(m, "foolish", 105) == 0);
-  assert(m->n == 3);
-  assert(map_add(m, "bar", 69) == 0);
-  assert(m->n == 4);
+  assert(map_add(m, "foo", 55) != NULL);
+  assert(m->length == 1);
+  assert(map_add(m, "fool", 75) != NULL);
+  assert(m->length == 2);
+  assert(map_add(m, "foolish", 105) != NULL);
+  assert(m->length == 3);
+  assert(map_add(m, "bar", 69) != NULL);
+  assert(m->length == 4);
 
-  int value = 0;
-  assert( map_get(m, "bar", &value));
-  assert(value == 69);
-  assert(!map_get(m, "baz", &value));
+  assert( map_get(m, "bar") != NULL);
+  assert(*map_get(m, "bar") == 69);
+  assert( map_get(m, "bax") == NULL);
 
   assert(!map_delete(m, "qux"));
-  assert(m->n == 4);
+  assert(m->length == 4);
 
   assert( map_delete(m, "bar"));
-  assert(m->n == 3);
-  assert(!map_get(m, "bar", &value));
+  assert(m->length == 3);
+  assert( map_get(m, "bar") == NULL);
 
   map_deinit(m);
   return 0;
