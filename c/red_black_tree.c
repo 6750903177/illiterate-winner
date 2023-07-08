@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,7 +7,7 @@ typedef struct node {
   struct node *parent;
   struct node *left;
   struct node *right;
-  bool is_black;
+  char color;
 } node_t;
 
 node_t* node_new(int value) {
@@ -21,7 +20,7 @@ node_t* node_new(int value) {
   n->parent = NULL;
   n->left = NULL;
   n->right = NULL;
-  n->is_black = false;
+  n->color = 'r';
 
   return n;
 }
@@ -88,90 +87,119 @@ void tree_free(tree_t *t) {
   free(t);
 }
 
-void tree_rotate_left(tree_t *t, node_t *n) {
-  node_t *m = n->right;
-  n->right = m->left;
-
-  if (m->left != NULL) {
-    m->left->parent = n;
+void tree_rotate_left(tree_t *t, node_t *x) {
+  if (x == NULL || x->right == NULL) {
+    return;
   }
 
-  m->parent = n->parent;
-  if (n->parent == NULL) {
-    t->root = m;
-  } else if (n == n->parent->left) {
-    n->parent->left = m;
+  node_t *y = x->right;
+  x->right = y->left;
+  
+  if (x->right != NULL) {
+    x->right->parent = x;
+  }
+
+  if (x->parent == NULL) {
+    t->root = y;
+  } else if (x == x->parent->left) {
+    x->parent->left = y;
   } else {
-    n->parent->right = m;
+    x->parent->right = y;
   }
 
-  m->left = n;
-  n->parent = m;
-
+  y->left = x;
+  x->parent = y;
   return;
 }
 
-void tree_rotate_right(tree_t *t, node_t *n) {
-  node_t *m = n->left;
-  n->left = m->right;
-
-  if (m->right != NULL) {
-    m->right->parent = n;
+void tree_rotate_right(tree_t *t, node_t *x) {
+  if (x == NULL || x->right == NULL) {
+    return;
   }
 
-  m->parent = n->parent;
-  if (n->parent == NULL) {
-    t->root = m;
-  } else if (n == n->parent->right) {
-    n->parent->right = m;
+  node_t *y = x->right;
+  x->right = y->right;
+  
+  if (x->right != NULL) {
+    x->right->parent = x;
+  }
+
+  if (x->parent == NULL) {
+    t->root = y;
+  } else if (x == x->parent->right) {
+    x->parent->right = y;
   } else {
-    n->parent->left = m;
+    x->parent->right = y;
   }
 
-  m->right = n;
-  n->parent = m;
-
+  y->right = x;
+  x->parent = y;
   return;
 }
 
-void _red_black_fix(tree_t *t, node_t *n) {
-  while (n->parent != NULL && !n->parent->is_black && n->parent->parent != NULL) {
-    if (n->parent == n->parent->parent->left) {
-      node_t *y = n->parent->parent->right;
-      if (!y->is_black) {
-        n->parent->is_black = true;
-        y->is_black = true;
-        n->parent->parent->is_black = false;
-        n = n->parent->parent;
-      } else {
-        if (n == n->parent->right) {
-          n = n->parent;
-          tree_rotate_left(t, n);
-        }
-        n->parent->is_black = true;
-        n->parent->parent->is_black = false;
-        tree_rotate_right(t, n->parent->parent);
-      }
+void _red_black_fix(tree_t *t, node_t *z) {
+  while (
+    z != t->root &&
+    z != t->root->left &&
+    z != t->root->right &&
+    z->parent->color == 'r'
+  ) {
+    // find uncle node
+    node_t *y = NULL;
+    if (z->parent && z->parent->parent && z->parent == z->parent->parent->left) {
+      y = z->parent->parent->right;
     } else {
-      node_t *y = n->parent->parent->right;
-      if (!y->is_black) {
-        n->parent->is_black = true;
-        y->is_black = true;
-        n->parent->parent->is_black = false;
-        n = n->parent->parent;
-      } else {
-        if (n == n->parent->right) {
-          n = n->parent;
-          tree_rotate_right(t, n);
-        }
-        n->parent->is_black = true;
-        n->parent->parent->is_black = false;
-        tree_rotate_right(t, n->parent->parent);
+      y = z->parent->parent->left;
+    }
+
+    if (y == NULL) {
+      // if uncle does not exist
+      // 1. move current node to grandparent
+      z = z->parent->parent;
+    } else if (y->color == 'r') {
+      // if uncle is RED
+      // 1. change color of parent and uncle to BLACK
+      // 2. change color of grandparent to RED
+      // 3. move current node to grandparent
+      y->color = 'b';
+      z->parent->color = 'b';
+      z->parent->parent->color = 'r';
+      z = z->parent->parent;
+    } else {
+      if (z->parent == z->parent->parent->left && z == z->parent->left) {
+        char color = z->parent->color;
+        z->parent->color = z->parent->parent->color;
+        z->parent->parent->color = color;
+        tree_rotate_right(t, z->parent->parent);
+      }
+
+      if (z->parent && z->parent->parent && z->parent == z->parent->parent->left && z == z->parent->right) {
+        char color = z->color;
+        z->color = z->parent->parent->color;
+        z->parent->parent->color = color;
+        tree_rotate_left(t, z->parent);
+        tree_rotate_right(t, z->parent->parent);
+      }
+
+      if (z->parent && z->parent->parent && z->parent == z->parent->parent->right && z == z->parent->right) {
+        char color = z->parent->color;
+        z->parent->color = z->parent->parent->color;
+        z->parent->parent->color = color;
+        tree_rotate_left(t, z->parent->parent);
+      }
+
+      if (z->parent && z->parent->parent && z->parent == z->parent->parent->right && z == z->parent->left) {
+        char color = z->color;
+        z->color = z->parent->parent->color;
+        z->parent->parent->color = color;
+        tree_rotate_right(t, z->parent);
+        tree_rotate_left(t, z->parent->parent);
       }
     }
   }
 
-  t->root->is_black = true;
+  t->root->color = 'b';
+  return;
 }
 
 node_t* tree_insert(tree_t *t, int value) {
@@ -179,6 +207,7 @@ node_t* tree_insert(tree_t *t, int value) {
 
   if (t->root == NULL) {
     n = node_new(value);
+    n->color = 'b';
     t->root = n;
     return n;
   }
@@ -188,14 +217,7 @@ node_t* tree_insert(tree_t *t, int value) {
     return NULL;
   }
 
-  if (
-    n->parent != NULL &&
-    n->parent->parent != NULL &&
-    n->parent->parent->left != NULL &&
-    n->parent->parent->right != NULL
-  ) {
-    _red_black_fix(t, n);
-  }
+  _red_black_fix(t, n);
   return n;
 }
 
@@ -205,7 +227,7 @@ void _print(node_t *n) {
   }
 
   _print(n->left);
-  printf("%d ", n->value);
+  printf("%d(%c) ", n->value, n->color);
   _print(n->right);
 } 
 
@@ -224,12 +246,13 @@ int main(void) {
   tree_insert(t, 1);
   tree_insert(t, 7);
   tree_insert(t, 5);
-  tree_insert(t, 4);
   tree_insert(t, 8);
   tree_insert(t, 14);
   tree_insert(t, 15);
+  tree_insert(t, 4);
 
   tree_print(t);
+  printf("%d(%c)\n", t->root->value, t->root->color);
 
   tree_free(t);
   return 0;
